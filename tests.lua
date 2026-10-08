@@ -1,6 +1,7 @@
 local Ability = require "necro.game.system.Ability"
 local Action = require "necro.game.system.Action"
 local Ambush = require "necro.game.character.Ambush"
+local Currency = require "necro.game.item.Currency"
 local CurrentLevel = require "necro.game.level.CurrentLevel"
 local CustomEntities = require "necro.game.data.CustomEntities"
 local Descent = require "necro.game.character.Descent"
@@ -10,69 +11,64 @@ local Flyaway = require "necro.game.system.Flyaway"
 local GameSession = require "necro.client.GameSession"
 local Input = require "necro.client.Input"
 local Inventory = require "necro.game.item.Inventory"
+local Lobby = require "necro.game.level.Lobby"
 local Map = require "necro.game.object.Map"
+local Netplay = require "necro.network.Netplay"
 local Object = require "necro.game.object.Object"
 local Player = require "necro.game.character.Player"
+local Room = require "necro.client.Room"
 local Tile = require "necro.game.tile.Tile"
 local Turn = require "necro.cycles.Turn"
 
+function assertItemAt(x, y, name)
+  local player = Player.getPlayerEntity(1)
+  for i, entityId in ipairs(Map.getAll(player.position.x + x, player.position.y + y)) do
+    local entity = Entities.getEntityByID(entityId)
+    if entity.name == name then
+      return true
+    end
+  end
+  print("ASSERTION FAILED. Map tile " .. x .. " " .. y .. " does not have an entity named '" .. name .. "'")
+  return false
+end
 
--- testing
-local ExtraMode = require "necro.game.data.modifier.ExtraMode"
-
-
-function hasInventoryItem(name)
+function assertInventoryItem(name)
   for _, item in ipairs(Inventory.getItems(Player.getPlayerEntity(1))) do
     if item.name == name then
       return true
     end
   end
+  print("ASSERTION FAILED. Player does not have item '" .. name .. "' in their inventory.")
   return false
-end
-
-function assertEquals(a, b)
-  if a == b then
-    return true
-  end
-  print("ASSERTION FAILED. '" .. a .. "' ~= '" .. b .. "'")
-  return false
-end
-
-function assertItemAt(x, y, name)
-  local player = Player.getPlayerEntity(1)
-  local actual = Map.get(player.position.x + x, player.position.y + y)
-  print("<44>", actual)
-  return assertEquals(name, actual.name)
 end
 
 function giveMoney(gold)
   local player = Player.getPlayerEntity(1)
   Currency.set(player, Currency.Type.GOLD, gold)
+  return true
 end
 
-local tests = {
---[[{
+local tests = {{
   name = "ShrineOfSpace",
   seed = 334529790,
   steps = {
     "LLDDDLL", -- Enter shriner
-    function() return assertItemAt(-1, -2, "ShrineGlass") end,
-    function() return assertItemAt( 0, -1, "ShrineWar") end,
-    function() return assertItemAt( 1, -1, "ShrineSpace") end,
+    function() return assertItemAt(-1, -2, "ShrineOfGlass") end,
+    function() return assertItemAt( 0, -2, "ShrineOfBoss") end,
+    function() return assertItemAt( 1, -2, "ShrineOfSpace") end,
     function() return giveMoney(50) end,
-    "RUUDDL", -- Tap shrine, leave
+    "RUUDL", -- Tap shrine, leave
 
-    "DLL.LLL.....", -- Die to the ghost to re
-    
+    "DLL.LLLL.....", -- Die to the ghost
+
+    -- Somehow confirm no shrine of space was applied... maybe level size?
   },
-},
---]]
-{
+},{
   name = "TransmuteShop",
   seed = 1658736754,
   steps = {
     "UURRRRUUUU.UUUURUU", -- Grab transmute tome
-    function() return hasInventoryItem("TomeTransmute") end,
+    function() return assertInventoryItem("TomeTransmute") end,
     "DDDDLDDDLLLUUUUUULL", -- Enter shop
     function() return assertItemAt(-1, -1, "WeaponSpear") end,
     function() return assertItemAt( 0, -1, "BombGrenade3") end,
@@ -90,7 +86,7 @@ local tests = {
     -- Repeat the test and confirm the same items spawn / transmute
 
     "UURRRRUUUU.UUUURUU", -- Grab transmute tome
-    function() return hasInventoryItem("TomeTransmute") end,
+    function() return assertInventoryItem("TomeTransmute") end,
     "DDDDLDDDLLLUUUUUULL", -- Enter shop
     function() return assertItemAt(-1, -1, "WeaponSpear") end,
     function() return assertItemAt( 0, -1, "BombGrenade3") end,
@@ -148,11 +144,13 @@ Event.gameStateLevel.add("placeTestStairs", {order="levelLoadingDone"}, function
   end
 end)
 
+local testSpeedMult = 10
 local runningTests = false
 local testNo = nil
 Event.objectMove.add("enterTestStairs", {order = "tileEffects", sequence = 1, filter = "controllable"}, function(evt)
   if evt.x == stairs.x and evt.y == stairs.y and CurrentLevel.isLobby() then
     testNo = 0
+    Room.setAttribute(Netplay.RoomAttribute.TEMPO_MULTIPLIER, testSpeedMult)
     startNextTest()
     runningTests = true
   end
@@ -164,30 +162,33 @@ local subStepIndex = 1
 function startNextTest()
   testNo = testNo + 1
   if testNo > #tests then
-    print("-- ALL TESTS PASSED --")
+    print("-- ALL TESTS DONE --")
     runningTests = false
+    Room.setAttribute(Netplay.RoomAttribute.TEMPO_MULTIPLIER, nil)
+    Lobby.open()
     return -- TODO: somehow get back to the lobby?
   end
 
   currentTest = tests[testNo]
   stepIndex = 1
+  subStepIndex = 1
   GameSession.start({modeID = GameSession.Mode.AllZonesSeeded, seed = currentTest.seed})
 end
 
---[[
 Event.objectUpdateRhythm.add("autoPlayDuringTests", {order="autoPlay"}, function(evt)
   if runningTests then
     evt.autoPlay = true
   end
 end)
---]]
 
+--[[
 -- Same as No Beat mode's rhythm change, minus its item generation bans. autoPlay must stay off, it overrides this.
 Event.objectUpdateRhythm.add("noBeatDuringTests", {order="customMode", sequence=1}, function(evt)
   if runningTests then
     evt.ignoreRhythm = true
   end
 end)
+--]]
 
 function testFailed()
   print("FAILED: " .. currentTest.name)
@@ -206,10 +207,17 @@ end
 function getNextTestMove()
   if CurrentLevel.isLobby() then -- Stop the tests if the user quits to lobby
     runningTests = false
+    Room.setAttribute(Netplay.RoomAttribute.TEMPO_MULTIPLIER, nil)
     return nil
   end
 
-  if currentTest == nil or stepIndex > #currentTest.steps then
+  if currentTest == nil then
+    return nil
+  end
+  
+  if stepIndex > #currentTest.steps then
+    print("PASSED: " .. currentTest.name)
+    startNextTest()
     return nil
   end
 
@@ -218,6 +226,7 @@ function getNextTestMove()
     if not step() then
       testFailed()
       startNextTest()
+      return nil
     end
     stepIndex = stepIndex + 1
     return getNextTestMove() -- Could be another assert or another string of moves.
@@ -250,9 +259,9 @@ function getNextTestMove()
   testFailed()
 end
 
---[[
+-- The pending transition check lets lobby beats through untouched until the run starts, so the lobby check doesn't stop the tests.
 Event.clientAddInput.add("injectInputs", {order="lobbyCooldown", sequence=-1}, function(evt)
-  if runningTests and evt.action == Action.Special.IDLE then
+  if runningTests and evt.action == Action.Special.IDLE and not GameSession.hasPendingTransition() then
     local move = getNextTestMove()
     if move ~= nil then
       evt.action = move
@@ -260,8 +269,8 @@ Event.clientAddInput.add("injectInputs", {order="lobbyCooldown", sequence=-1}, f
     end
   end
 end)
---]]
 
+--[[
 -- No beats means no idle inputs to rewrite, so submit one move each time the previous one has been fully simulated.
 Event.tick.add("driveTests", {order="input", sequence=1}, function()
   if runningTests and not GameSession.hasPendingTransition() and not Input.isPlayerInputBlocked() and Turn.isLatestTurnReached() then
@@ -271,3 +280,4 @@ Event.tick.add("driveTests", {order="input", sequence=1}, function()
     end
   end
 end)
+--]]
