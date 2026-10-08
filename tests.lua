@@ -9,6 +9,7 @@ local Entities = require "system.game.Entities"
 local Event = require "necro.event.Event"
 local Flyaway = require "necro.game.system.Flyaway"
 local GameSession = require "necro.client.GameSession"
+local GrooveChain = require "necro.game.character.GrooveChain"
 local Input = require "necro.client.Input"
 local Inventory = require "necro.game.item.Inventory"
 local Lobby = require "necro.game.level.Lobby"
@@ -24,7 +25,7 @@ local Turn = require "necro.cycles.Turn"
 function assertItemAt(x, y, name)
   local player = Player.getPlayerEntity(1)
   local found = ''
-  for i, entityId in ipairs(Map.getAll(player.position.x + x, player.position.y + y)) do
+  for _, entityId in ipairs(Map.getAll(player.position.x + x, player.position.y + y)) do
     local entity = Entities.getEntityByID(entityId)
     if entity.name == name then
       return true
@@ -37,12 +38,16 @@ function assertItemAt(x, y, name)
 end
 
 function assertInventoryItem(name)
-  for _, item in ipairs(Inventory.getItems(Player.getPlayerEntity(1))) do
+  local player = Player.getPlayerEntity(1)
+  local found = ''
+  for _, item in ipairs(Inventory.getItems(player)) do
     if item.name == name then
       return true
     end
+    found = found .. item.name .. " "
   end
   print("ASSERTION FAILED. Player does not have item '" .. name .. "' in their inventory.")
+  print("Found items: " .. found)
   return false
 end
 
@@ -53,15 +58,45 @@ function giveMoney(gold)
 end
 
 -- TODO: Test for blood
--- TODO: Test for combo
 -- TODO: Test for max health / cursed health
 -- TODO: Test for spells
--- TODO: Tests for pushing things through trapdoors (cheat here, for sure). Probably simplest to test with Chest3.
--- TODO: Test for money
 -- TODO: Test for inventory (probably implicit with the above)
+-- TODO: Tests for pushing things through trapdoors (cheat here, for sure). Probably simplest to test with Chest3.
 
+
+local testSpeedMult = 10
 
 local tests = {{
+  name = "PreserveCombo",
+  seed = 1009649599,
+  steps = {
+    "UURRRQRRRLU", -- Enter blood shop
+    "UUDD", -- Buy obs spear
+    function() return assertInventoryItem("WeaponObsidianSpear") end,
+    "DDDDDDDDRRRRR", -- Enter ghost room
+    "RRDDDDDLDUD", -- Kill ghost, enter speedup room
+    "DDLLLLLL.", -- Kill minotaur, enter final room, drop the beat
+    "DDDDDDD", -- Kill 3 enemies, take stairs
+    function() return CurrentLevel.getNumber() == 2 end,
+    function() return GrooveChain.getMultiplier(Player.getPlayerEntity(1)) == 2 end,
+    function() return Currency.get(Player.getPlayerEntity(1), Currency.Type.GOLD) == 28 end,
+    
+    "LLDDDDLL", -- Enter west room
+    "LLLLLLL....", -- Die to blue slime
+    
+    function() return CurrentLevel.getNumber() == 2 end,
+    function() return Currency.get(Player.getPlayerEntity(1), Currency.Type.GOLD) == 28 end,
+    function() return GrooveChain.getMultiplier(Player.getPlayerEntity(1)) == 2 end,
+    
+    "LLDDDDLL", -- Enter west room
+    
+    "LLLL", -- kill one enemy
+    function() return GrooveChain.getMultiplier(Player.getPlayerEntity(1)) == 2 end,
+
+    "LLDDL", -- kill second enemy
+    function() return GrooveChain.getMultiplier(Player.getPlayerEntity(1)) == 3 end,
+  },
+}, {
   name = "BloodShopTeleport",
   seed = 294842629,
   steps = {
@@ -199,7 +234,6 @@ Event.gameStateLevel.add("placeTestStairs", {order="levelLoadingDone"}, function
   end
 end)
 
-local testSpeedMult = 10
 local runningTests = false
 local testNo = nil
 Event.objectMove.add("enterTestStairs", {order = "tileEffects", sequence = 1, filter = "controllable"}, function(evt)

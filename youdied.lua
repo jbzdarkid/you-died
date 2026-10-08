@@ -22,17 +22,22 @@ local Utilities = require "system.utils.Utilities"
 
 
 -- TODO: Some better ideas about what lives where.
--- TODO: Crown of thorns does not save kill count (probably blood weapons too).
 -- TODO: Pause menu entry to retry level (in case you can't die?)
 -- TODO: Test:
   -- peace/boss shrine
   -- Holster / backpack
-  -- TODO: Crossbow ammo
+  -- Crossbow ammo
 
 local youDied = false -- Tracks if we need to reapply the saved level on restart.
 
 local savedState = nil
-Event.levelLoad.add("preLevelLoad", {order="entities"}, function(evt)
+Event.gameStateReset.add("clearCheckpoint", {order="random"}, function()
+  -- Clear state when we start a new run or go to the lobby.
+  youDied = false
+  savedState = nil
+end)
+
+Event.levelLoad.add("preLevelLoad", {order="runState", sequence=-1}, function(evt)
   if evt.zone == 1 and evt.floor == 1 then
     -- Testing hack
     Inventory.grant("MiscMap", Player.getPlayerEntity(1))
@@ -49,20 +54,20 @@ Event.levelLoad.add("preLevelLoad", {order="entities"}, function(evt)
 end)
 
 Event.gameStateLevel.add("postLevelLoad", {order="levelLoadingDone", sequence=-1}, function(evt)
+  --[[
   if youDied and #savedState.trapdoorItems > 0 then
     print("Respawning trapdoor items after level load")
     loadTrapdoorItems(savedState)
   end
+  --]]
 
-  -- Enemy spawn order is consistent, so we can just rely on the sequence to reapply the RNG correctly.
   if youDied then
     print("Applying saved entity RNG values on restart")
-    local i = 1
     for entity in Entities.entitiesWithComponents({"random"}) do
-      entity.random.state1 = savedState.randomEntities[i].state1
-      entity.random.state2 = savedState.randomEntities[i].state2
-      entity.random.state3 = savedState.randomEntities[i].state3
-      i = i + 1
+      local key = entity.name .. "@" .. entity.position.x .. "," .. entity.position.y
+      entity.random.state1 = savedState.randomEntities[key].state1
+      entity.random.state2 = savedState.randomEntities[key].state2
+      entity.random.state3 = savedState.randomEntities[key].state3
     end
   elseif savedState == nil then
     -- Invalid state
@@ -70,7 +75,8 @@ Event.gameStateLevel.add("postLevelLoad", {order="levelLoadingDone", sequence=-1
     print("Capturing entity RNG values after level load")
     savedState.randomEntities = {}
     for entity in Entities.entitiesWithComponents({"random"}) do
-      table.insert(savedState.randomEntities, Utilities.deepCopy(entity.random))
+      local key = entity.name .. "@" .. entity.position.x .. "," .. entity.position.y
+      savedState.randomEntities[key] = Utilities.deepCopy(entity.random)
     end
 
     savedState.ambushers = {}
@@ -163,7 +169,7 @@ function saveState()
 
   state.gold = Currency.get(player, Currency.Type.GOLD)
 
-  state.combo = player.grooveChain.killCount
+  state.grooveChain = Utilities.deepCopy(player.grooveChain)
   
   -- Per-run globals (e.g. "have you killed freddy")
   state.runState = Utilities.deepCopy(RunState.getState())
@@ -188,8 +194,8 @@ function saveState()
         health = entity.health.health,
         maxHealth = entity.health.maxHealth,
         contents = {},
-        x = entity.descentPositionOffset.offsetX,
-        y = entity.descentPositionOffset.offsetY,
+        -- x = entity.descentPositionOffset.offsetX,
+        -- y = entity.descentPositionOffset.offsetY,
       }
       if entity.storage ~= nil then
         for i, itemName in pairs(entity.storage.items) do
@@ -248,12 +254,9 @@ function loadState()
 
   Currency.set(player, Currency.Type.GOLD, savedState.gold)
 
-  GrooveChain.drop(player, GrooveChain.Type.DAMAGE)
-  if savedState.combo > 0 then
-    for i = 1, savedState.combo do
-      GrooveChain.increase(player)
-    end
-  end
+  player.grooveChain.killCount = savedState.grooveChain.killCount
+  player.grooveChain.multiplier = savedState.grooveChain.multiplier
+  GrooveChain.update(player)
 
   -- 
   
@@ -275,8 +278,19 @@ function loadState()
       Object.delete(entity)
     end
   end
+
+  -- Spawn crates mid-descent (in theory this should fix the player collision issue).
+  for i, item in ipairs(savedState.trapdoorItems) do
+    Object.spawn(item.name, 0, 0, {
+      descent = {active = true},
+      health = {health = item.health, maxHealth = item.maxHealth},
+      storage = {items = item.contents},
+      spawnInvincibility = {active = false},
+    })
+  end
 end
 
+--[[
 -- The trapdoor items are deferred until the player has landed, otherwise they can overlap.
 function loadTrapdoorItems()
   for i, item in pairs(savedState.trapdoorItems) do
@@ -293,3 +307,4 @@ function loadTrapdoorItems()
     })
   end  
 end
+--]]
