@@ -1,0 +1,14 @@
+{
+	"namespace": "youdied",
+	"displayName": "you_died",
+	"version": "1.0.0",
+	"synchronyVersion": "4.2.1",
+	"description": "Restarts the level when you die.",
+	"author": "darkid",
+	"dependencies": {},
+	"api": {"scriptPath":""},
+	"icon": "youdiedIcon.png",
+	"banner": "youdiedBanner.png",
+	"tags": [],
+	"name": "youdied"
+}
