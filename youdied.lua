@@ -34,29 +34,12 @@ local youDied = false -- Tracks if we need to reapply the saved level on restart
 
 local savedState = nil
 Event.levelLoad.add("preLevelLoad", {order="entities"}, function(evt)
-  -- Debugging hacks.
-  if evt.zone == 1 and evt.floor == 2 then
-    Object.spawn("RingPeace", -1, 0)
-  end
   if evt.zone == 1 and evt.floor == 1 then
-    local Object = require "necro.game.object.Object"
-    -- Object.spawn("CursedPotion", 1, 0)
-    Object.spawn("MiscMap", 1, 0)
-    -- Object.spawn("FamiliarShopkeeper", 1, 0)
-    -- Object.spawn("SpellShield", 1, 0)
-    -- Object.spawn("Bomb3", 0, 1)
-
-    -- Object.spawn("Crate", -1, 0)
-    -- Object.spawn("Crate2", -1, 0)
-    -- Object.spawn("Crate3", -1, 0)
-    -- Object.spawn("Crate5", -1, 0)
-    
-    Object.spawn("Trapdoor", -2, 0)
+    Inventory.grant("MiscMap", Player.getPlayerEntity(1))
   end
-  
   if youDied then
     print("Restarting level " .. evt.zone .. "-" .. evt.floor .. " after dying")
-    loadState(savedState)
+    loadState()
   else
     print("Reached new level " .. evt.zone .. "-" .. evt.floor .. ", making new checkpoint")
     savedState = saveState()
@@ -236,12 +219,12 @@ function saveState()
   return state
 end
 
-function loadState(state)
+function loadState()
   local player = Player.getPlayerEntity(1)
   
   Inventory.clear(player)
-  if #state.items > 0 then
-    for i, item in ipairs(state.items) do
+  if #savedState.items > 0 then
+    for i, item in ipairs(savedState.items) do
       local granted = Inventory.grant(item.name, player)
       if item.quantity ~= nil then
         granted.itemStack.quantity = item.quantity
@@ -276,8 +259,8 @@ function loadState(state)
   Currency.set(player, Currency.Type.GOLD, savedState.gold)
 
   GrooveChain.drop(player, GrooveChain.Type.DAMAGE)
-  if state.combo > 0 then
-    for i = 1, state.combo do
+  if savedState.combo > 0 then
+    for i = 1, savedState.combo do
       GrooveChain.increase(player)
     end
   end
@@ -287,13 +270,13 @@ function loadState(state)
   -- getSeenCounts returns a reference we can modify
   local mutableCounts = ItemGeneration.getSeenCounts()
   for item in pairs(mutableCounts) do
-    mutableCounts[item] = state.seenItems[item] -- Will be nil if we haven't seen it before
+    mutableCounts[item] = savedState.seenItems[item] -- Will be nil if we haven't seen it before
   end
 
   -- getSeenCounts returns a reference we can modify
   local mutableShrineCounts = ShrineGeneration.getSeenCounts()
   for shrine in pairs(mutableShrineCounts) do
-    mutableShrineCounts[shrine] = state.seenShrines[shrine]
+    mutableShrineCounts[shrine] = savedState.seenShrines[shrine]
   end 
   
   -- Wipe out anything that dropped through a trapdoor so it's not there on restart
@@ -305,8 +288,8 @@ function loadState(state)
 end
 
 -- The trapdoor items are deferred until the player has landed, otherwise they can overlap.
-function loadTrapdoorItems(state)
-  for i, item in pairs(state.trapdoorItems) do
+function loadTrapdoorItems()
+  for i, item in pairs(savedState.trapdoorItems) do
     local crate = Object.spawn(item.name, item.x, item.y, {
       health = {health = item.health, maxHealth = item.maxHealth},
       storage = {items = item.contents},
