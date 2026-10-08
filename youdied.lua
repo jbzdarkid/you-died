@@ -19,7 +19,6 @@ local ShrineGeneration = require "necro.game.level.ShrineGeneration"
 local Utilities = require "system.utils.Utilities"
 
 -- Docs are available via https://vortexbuffer.com/synchrony/docs/search/search_index.json
--- The game's Lua is compiled and not readable; don't bother.
 
 
 -- TODO: Some better ideas about what lives where.
@@ -35,8 +34,10 @@ local youDied = false -- Tracks if we need to reapply the saved level on restart
 local savedState = nil
 Event.levelLoad.add("preLevelLoad", {order="entities"}, function(evt)
   if evt.zone == 1 and evt.floor == 1 then
+    -- Testing hack
     Inventory.grant("MiscMap", Player.getPlayerEntity(1))
   end
+
   if youDied then
     print("Restarting level " .. evt.zone .. "-" .. evt.floor .. " after dying")
     loadState()
@@ -69,39 +70,21 @@ Event.gameStateLevel.add("postLevelLoad", {order="levelLoadingDone", sequence=-1
     print("Capturing entity RNG values after level load")
     savedState.randomEntities = {}
     for entity in Entities.entitiesWithComponents({"random"}) do
-      table.insert(savedState.randomEntities, entity.random)
+      table.insert(savedState.randomEntities, Utilities.deepCopy(entity.random))
+    end
+
+    savedState.ambushers = {}
+    if Ambush.isActive() then
+      print("Capturing ambushers from a trapdoor drop")
+      for entity in Entities.entitiesWithComponents({"ambusher"}) do
+        if entity.ambusher.active then
+          table.insert(savedState.ambushers, entity.name)
+        end
+      end
     end
   end
-
   -- This is the last handler (for now) so it's where we clear this flag.
   youDied = false
-end)
-
-Event.levelComplete.add("replayLevel", {order="nextLevel", sequence=-1}, function(evt)
-  if youDied and savedState ~= nil then
-    print("Prevented level transition because you died")
-    evt.targetLevel = savedState.targetLevel
-
-    -- We need to restore the runState here, before the level loads. Otherwise things like Shrine of Space have already been applied.
-    RunState.reset({Player.getPlayerEntity(1)})
-    for key, value in pairs(savedState.runState) do
-      RunState.set(key, Utilities.deepCopy(value))
-    end
-  end
-end)
-
-Event.gameStateLevel.add("captureAmbushers", {order="createAmbush", sequence=1}, function(evt)
-  if savedState == nil then
-    return -- Invalid state
-  elseif savedState.ambushers ~= nil then
-    return -- Keep the first arrival's ambushers across replays.
-  end
-  savedState.ambushers = {}
-  for entity in Entities.entitiesWithComponents({"ambusher"}) do
-    if entity.ambusher.active then
-      table.insert(savedState.ambushers, entity.name)
-    end
-  end
 end)
 
 Event.objectTakeDamage.add("checkDeath", {order="death", sequence=-1, filter="health"}, function(evt)
@@ -140,6 +123,19 @@ Event.objectTakeDamage.add("checkDeath", {order="death", sequence=-1, filter="he
   youDied = true
 end)
 
+Event.levelComplete.add("replayLevel", {order="nextLevel", sequence=-1}, function(evt)
+  if youDied and savedState ~= nil then
+    print("Prevented level transition because you died")
+    evt.targetLevel = savedState.targetLevel
+
+    -- We need to restore the runState here, before the level loads. Otherwise things like Shrine of Space have already been applied.
+    RunState.reset({Player.getPlayerEntity(1)})
+    for key, value in pairs(savedState.runState) do
+      RunState.set(key, Utilities.deepCopy(value))
+    end
+  end
+end)
+
 function saveState()
   local state = {}
   local player = Player.getPlayerEntity(1)
@@ -161,21 +157,9 @@ function saveState()
     table.insert(state.items, itemData)
   end
 
-  state.max = 0
-  state.red = 0
-  state.cursed = 0
-  for i, heart in ipairs(Health.getHearts(player)) do
-    state.max = state.max + 2
-    if heart == Health.Heart.RED_HALF then
-      state.red = state.red + 1
-    elseif heart == Health.Heart.RED_FULL then
-      state.red = state.red + 2
-    elseif heart == Health.Heart.CURSED_HALF then
-      state.cursed = state.cursed + 1
-    elseif heart == Health.Heart.CURSED_FULL then
-      state.cursed = state.cursed + 2
-    end
-  end
+  state.health = player.health.health
+  state.maxHealth = player.health.maxHealth
+  state.cursedHealth = player.cursedHealth.health
 
   state.gold = Currency.get(player, Currency.Type.GOLD)
 
@@ -238,6 +222,11 @@ function loadState()
     end
   end
 
+  player.health.health = savedState.health
+  player.health.maxHealth = savedState.maxHealth
+  player.cursedHealth.health = savedState.cursedHealth
+
+  --[[
   -- Wipe out the current health, then replace it with the correct max.
   Health.curseHealth(player, Health.getMaxHealth(player))
   Health.increaseMaxHealth(player, savedState.max, player)
@@ -255,6 +244,7 @@ function loadState()
     noParticles=true,
     silent=true,
   })
+  --]]
 
   Currency.set(player, Currency.Type.GOLD, savedState.gold)
 

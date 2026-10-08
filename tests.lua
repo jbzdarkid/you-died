@@ -16,19 +16,23 @@ local Map = require "necro.game.object.Map"
 local Netplay = require "necro.network.Netplay"
 local Object = require "necro.game.object.Object"
 local Player = require "necro.game.character.Player"
+local RNG = require "necro.game.system.RNG"
 local Room = require "necro.client.Room"
 local Tile = require "necro.game.tile.Tile"
 local Turn = require "necro.cycles.Turn"
 
 function assertItemAt(x, y, name)
   local player = Player.getPlayerEntity(1)
+  local found = ''
   for i, entityId in ipairs(Map.getAll(player.position.x + x, player.position.y + y)) do
     local entity = Entities.getEntityByID(entityId)
     if entity.name == name then
       return true
     end
+    found = found .. entity.name .. " "
   end
   print("ASSERTION FAILED. Map tile " .. x .. " " .. y .. " does not have an entity named '" .. name .. "'")
+  print("Found entities: " .. found)
   return false
 end
 
@@ -48,7 +52,71 @@ function giveMoney(gold)
   return true
 end
 
+-- TODO: Test for blood
+-- TODO: Test for combo
+-- TODO: Test for max health / cursed health
+-- TODO: Test for spells
+-- TODO: Tests for pushing things through trapdoors (cheat here, for sure). Probably simplest to test with Chest3.
+-- TODO: Test for money
+-- TODO: Test for inventory (probably implicit with the above)
+
+
 local tests = {{
+  name = "BloodShopTeleport",
+  seed = 294842629,
+  steps = {
+    "RRUUQRRUL", -- Enter blood shop
+    "GU", -- Aggro the shopkeep
+    function() return assertItemAt(-1, 0, "Shopkeeper2") end,
+
+    "..", -- Die to shopkeep
+
+    "RRUUQRRUL", -- Enter blood shop
+    "UGU", -- Move then throw, should get the same teleport
+    function() return assertItemAt(-1, 0, "Shopkeeper2") end,
+
+    "..", -- Die to shopkeep
+
+    "RRUUQRRUL", -- Enter blood shop
+    "UUUGU", -- Move further up, then throw, should get the same teleport
+    function() return assertItemAt(-1, 2, "Shopkeeper2") end,
+  },
+}, {
+  name = "ArenaKeepsEnemiesOnReplay",
+  seed = 1939573472,
+  steps = {
+    "DRRRRRRRRDDDDRD....", -- Take the trapdoor
+    function() return CurrentLevel.getNumber() == 2 end,
+    function() return assertItemAt(-2, -2, "Bat") end,
+    function() return assertItemAt( 2, -2, "Skeleton") end,
+    function() return assertItemAt( 2,  2, "Ghost") end,
+    function() return assertItemAt(-2,  2, "Dragon") end,
+    "LULRU.DLRLRL", -- Almost clear the arena
+    function() return assertItemAt(-1, 0, "Dragon") end,
+    -- function() return assertItemAt(1, 0, "Wall2") end, -- TODO.
+    "L", -- Kill the dragon and clear the arena
+    function() return assertItemAt(-1, 0, "ResourceCoin10") end,
+    -- function() return assertItemAt(1, 0, nil) end,
+
+    "RRRRQR......", -- Die to bomb
+
+    function() return CurrentLevel.getNumber() == 2 end,
+    function() return assertItemAt(-2, -2, "Bat") end,
+    function() return assertItemAt( 2, -2, "Skeleton") end,
+    function() return assertItemAt( 2,  2, "Ghost") end,
+    function() return assertItemAt(-2,  2, "Dragon") end,
+    "LULRU.DLRLRL", -- Almost clear the arena
+    function() return assertItemAt(-1, 0, "Dragon") end,
+
+    ".......", -- Die to dragon
+
+    function() return CurrentLevel.getNumber() == 2 end,
+    function() return assertItemAt(-2, -2, "Bat") end,
+    function() return assertItemAt( 2, -2, "Skeleton") end,
+    function() return assertItemAt( 2,  2, "Ghost") end,
+    function() return assertItemAt(-2,  2, "Dragon") end,
+  },
+},{
   name = "ShrineOfSpace",
   seed = 334529790,
   steps = {
@@ -61,7 +129,13 @@ local tests = {{
 
     "DLL.LLLL.....", -- Die to the ghost
 
-    -- Somehow confirm no shrine of space was applied... maybe level size?
+    -- If shrine of space is preserved, the shriner will be in a different spot.
+    -- (this also tests that we preserve 'seen shrines')
+
+    "LLDDDLL", -- Enter shriner
+    function() return assertItemAt(-1, -2, "ShrineOfGlass") end,
+    function() return assertItemAt( 0, -2, "ShrineOfBoss") end,
+    function() return assertItemAt( 1, -2, "ShrineOfSpace") end,
   },
 },{
   name = "TransmuteShop",
@@ -84,6 +158,7 @@ local tests = {{
     "RRUULQ.....", -- Blow up Freddy and die
 
     -- Repeat the test and confirm the same items spawn / transmute
+    -- (this also tests that we preserve 'seen items')
 
     "UURRRRUUUU.UUUURUU", -- Grab transmute tome
     function() return assertInventoryItem("TomeTransmute") end,
@@ -100,26 +175,6 @@ local tests = {{
     function() return assertItemAt( 0, -1, "Torch2") end,
     function() return assertItemAt( 1, -1, "WeaponRapier") end,
   },
---[[
-},{
-  name = "BloodShopTeleport",
-  seed = 294842629,
-  steps = "RRUUQRRULGU",
-  success = function()
-    local shopkeep = Entities.getEntitiesByType("Shopkeeper2")[1]
-    print("<24>", shopkeep.position)
-    return shopkeep.position.x == -17 and shopkeep.position.y == -18
-  end,
-},{
-  name = "BloodShopTeleportRetry",
-  seed = 294842629,
-  steps = "RRUUQRRULGUR.RRUUQRRULGU",
-  success = function()
-    local shopkeep = Entities.getEntitiesByType("Shopkeeper2")[1]
-    print("<33>", shopkeep.position)
-    return shopkeep.position.x == -17 and shopkeep.position.y == -18
-  end,
---]]
 }}
 
 
@@ -166,7 +221,7 @@ function startNextTest()
     runningTests = false
     Room.setAttribute(Netplay.RoomAttribute.TEMPO_MULTIPLIER, nil)
     Lobby.open()
-    return -- TODO: somehow get back to the lobby?
+    return
   end
 
   currentTest = tests[testNo]
@@ -181,14 +236,15 @@ Event.objectUpdateRhythm.add("autoPlayDuringTests", {order="autoPlay"}, function
   end
 end)
 
---[[
--- Same as No Beat mode's rhythm change, minus its item generation bans. autoPlay must stay off, it overrides this.
-Event.objectUpdateRhythm.add("noBeatDuringTests", {order="customMode", sequence=1}, function(evt)
+-- Entity RNG is not actually consistent per run, so we need to fix it to have consistent enemy kill.
+Event.gameStateReset.add("seedRNGDuringTests", {order="random", sequence=1}, function()
   if runningTests then
-    evt.ignoreRhythm = true
+    print("Reseeding RNG for " .. currentTest.name)
+    RNG.seed(currentTest.seed, 100, 100)
   end
 end)
---]]
+
+
 
 function testFailed()
   print("FAILED: " .. currentTest.name)
@@ -200,8 +256,9 @@ function testFailed()
     offsetY = -20,
     size = 10,
   })
-  Object.spawn("Trapdoor", player.position.x, player.position.y)
-  Descent.perform(player, Descent.Type.TRAPDOOR)
+  -- Object.spawn("Trapdoor", player.position.x, player.position.y)
+  -- Descent.perform(player, Descent.Type.TRAPDOOR)
+  Lobby.open()
 end
 
 function getNextTestMove()
