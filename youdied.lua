@@ -24,8 +24,7 @@ local Utilities = require "system.utils.Utilities"
 -- TODO: Some better ideas about what lives where.
 -- TODO: Pause menu entry to retry level (in case you can't die?)
 -- TODO: Test:
-  -- peace/boss shrine
-  -- backpack
+  -- boss shrine
   -- Crossbow ammo
 
 local youDied = false -- Tracks if we need to reapply the saved level on restart.
@@ -55,13 +54,6 @@ Event.levelLoad.add("preLevelLoad", {order="runState", sequence=-1}, function(ev
 end)
 
 Event.gameStateLevel.add("postLevelLoad", {order="levelLoadingDone", sequence=-1}, function(evt)
-  --[[
-  if youDied and #savedState.trapdoorItems > 0 then
-    print("Respawning trapdoor items after level load")
-    loadTrapdoorItems(savedState)
-  end
-  --]]
-
   if youDied then
     print("Applying saved entity RNG values on restart")
     for entity in Entities.entitiesWithComponents({"random"}) do
@@ -204,8 +196,6 @@ function saveState()
         health = entity.health.health,
         maxHealth = entity.health.maxHealth,
         contents = {},
-        -- x = entity.descentPositionOffset.offsetX,
-        -- y = entity.descentPositionOffset.offsetY,
       }
       if entity.storage ~= nil then
         for i, itemName in pairs(entity.storage.items) do
@@ -290,22 +280,3 @@ function loadState()
     })
   end
 end
-
---[[
--- The trapdoor items are deferred until the player has landed, otherwise they can overlap.
-function loadTrapdoorItems()
-  for i, item in pairs(savedState.trapdoorItems) do
-    local crate = Object.spawn(item.name, item.x, item.y, {
-      health = {health = item.health, maxHealth = item.maxHealth},
-      storage = {items = item.contents},
-      spawnInvincibility = {active = false},
-      soundDeath = nil,
-    })
-    Damage.inflict({
-      victim = crate,
-      damage = 3,
-      type = Damage.Flag.EXPLOSIVE, -- Matches the real damage type
-    })
-  end  
-end
---]]

@@ -77,7 +77,13 @@ function giveMoney(gold)
   return true
 end
 
--- TODO: Test for Crate3 spreading through trapdoor (!)
+function spawnItemAt(x, y, item)
+  local player = Player.getPlayerEntity(1)
+  Object.spawn(item, player.position.x + x, player.position.y + y)
+  return true
+end
+
+-- TODO: Test for leprechaun
 
 local testSpeedMult = 10
 
@@ -93,7 +99,7 @@ local tests = {{
     "U", -- Dash up
     function() return assertTileAt(0, -1, "ShopWallCracked") end,
     
-    "Q...", -- Die to bomb
+    "Q....", -- Die to bomb
 
     -- Confirm that we kept dash, so 'Up' gets us next to the shop wall again
     "U",
@@ -201,6 +207,28 @@ local tests = {{
 
     -- and the crate spawned the same stuff.
     function() return assertWorldItemAt(-1, 0, "BombGrenade3") end,
+  },
+}, {
+  name = "Crate3Trapdoor",
+  seed = 1020236453,
+  steps = {
+    "DDDDDDDQUURR", -- Kill minotaur, grab bomb
+    "RDR", -- Open some walls
+    -- These spawn incredibly rarely so I'm just cheating one in.
+    function() return spawnItemAt(1, 0, "Crate3") end,
+    "RRRRR", -- Damage the urn twice
+    "URD", -- Push urn through trapdoor
+    function() return assertWorldItemAt(-1, 2, "TrapdoorOpen") end,
+    "DD....", -- Drop down yourself
+    function() return assertWorldItemAt(-2, 0, "SpellHeal") end,
+    function() return assertWorldItemAt(-1, 0, "WeaponTitaniumCutlass") end,
+    function() return assertWorldItemAt(-1, 1, "Food1") end,
+
+    "QLLRWWWW", -- Die to bomb + blood magic
+
+    function() return assertWorldItemAt(-2, 0, "SpellHeal") end,
+    function() return assertWorldItemAt(-1, 0, "WeaponTitaniumCutlass") end,
+    function() return assertWorldItemAt(-1, 1, "Food1") end,
   },
 }, {
   name = "CursedPotion",
