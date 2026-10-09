@@ -25,7 +25,7 @@ local Utilities = require "system.utils.Utilities"
 -- TODO: Pause menu entry to retry level (in case you can't die?)
 -- TODO: Test:
   -- peace/boss shrine
-  -- Holster / backpack
+  -- backpack
   -- Crossbow ammo
 
 local youDied = false -- Tracks if we need to reapply the saved level on restart.
@@ -41,6 +41,7 @@ Event.levelLoad.add("preLevelLoad", {order="runState", sequence=-1}, function(ev
   if evt.zone == 1 and evt.floor == 1 then
     -- Testing hack
     Inventory.grant("MiscMap", Player.getPlayerEntity(1))
+    Inventory.grant("HeadMonocle", Player.getPlayerEntity(1))
   end
 
   if youDied then
@@ -159,6 +160,13 @@ function saveState()
     if item.spellCooldownKills ~= nil then
       itemData.remainingKills = item.spellCooldownKills.remainingKills
     end
+    if item.itemActivable ~= nil then
+      itemData.activated = item.itemActivable.active
+    end
+
+    if item.itemHolster ~= nil then -- Checks both 'is Holster' and 'item is holstered'
+      state.holsteredItem = Entities.getEntityByID(item.itemHolster.content).name
+    end
 
     table.insert(state.items, itemData)
   end
@@ -166,6 +174,8 @@ function saveState()
   state.health = player.health.health
   state.maxHealth = player.health.maxHealth
   state.cursedHealth = player.cursedHealth.health
+
+  state.bloodKillCount = player.regenerationKillCounter.killCount
 
   state.gold = Currency.get(player, Currency.Type.GOLD)
 
@@ -225,32 +235,25 @@ function loadState()
       if item.remainingKills ~= nil then
         granted.spellCooldownKills.remainingKills = item.remainingKills
       end
+      if item.activated then
+        granted.itemActivable.active = true
+      end
+
+      if item.name == "Holster" and savedState.holsteredItem ~= nil then
+        -- Holstered items aren't actually in the inventory, they're stored on the item.
+        -- Swap in and out so we use the game's storage systems.
+        Inventory.swapWithHolster(player, granted)
+        Inventory.grant(savedState.holsteredItem, player)
+        Inventory.swapWithHolster(player, granted)
+      end
     end
   end
 
   player.health.health = savedState.health
   player.health.maxHealth = savedState.maxHealth
   player.cursedHealth.health = savedState.cursedHealth
-
-  --[[
-  -- Wipe out the current health, then replace it with the correct max.
-  Health.curseHealth(player, Health.getMaxHealth(player))
-  Health.increaseMaxHealth(player, savedState.max, player)
-
-  -- Reverse-engineered from the consumableHeal event
-  Health.heal({
-    -- allowOverheal=false,
-    cursedHealth=savedState.cursed,
-    entity=player,
-    -- healer=player,
-    health=savedState.red,
-    -- holder=player,
-    -- invincibility=0,
-    -- maxHealth=0,
-    noParticles=true,
-    silent=true,
-  })
-  --]]
+  
+  player.regenerationKillCounter.killCount = savedState.bloodKillCount
 
   Currency.set(player, Currency.Type.GOLD, savedState.gold)
 
@@ -258,8 +261,6 @@ function loadState()
   player.grooveChain.multiplier = savedState.grooveChain.multiplier
   GrooveChain.update(player)
 
-  -- 
-  
   -- getSeenCounts returns a reference we can modify
   local mutableCounts = ItemGeneration.getSeenCounts()
   for item in pairs(mutableCounts) do
