@@ -37,12 +37,13 @@ Event.gameStateReset.add("clearCheckpoint", {order="random"}, function()
 end)
 
 Event.levelLoad.add("preLevelLoad", {order="runState", sequence=-1}, function(evt)
-  if evt.zone == 1 and evt.floor == 1 then
-    -- Testing hack
+  -- Testing hack
+  if evt.zone == 1 and evt.floor == 1 and not youDied then
     Inventory.grant("MiscMap", Player.getPlayerEntity(1))
-    Inventory.grant("HeadMonocle", Player.getPlayerEntity(1))
+    -- Inventory.grant("HeadMonocle", Player.getPlayerEntity(1))
   end
 
+  
   if youDied then
     print("Restarting level " .. evt.zone .. "-" .. evt.floor .. " after dying")
     loadState()
@@ -58,6 +59,9 @@ Event.gameStateLevel.add("postLevelLoad", {order="levelLoadingDone", sequence=-1
     print("Applying saved entity RNG values on restart")
     for entity in Entities.entitiesWithComponents({"random"}) do
       local key = entity.name .. "@" .. entity.position.x .. "," .. entity.position.y
+      if savedState.randomEntities[key] == nil then
+        print("<62>", key)
+      end
       entity.random.state1 = savedState.randomEntities[key].state1
       entity.random.state2 = savedState.randomEntities[key].state2
       entity.random.state3 = savedState.randomEntities[key].state3
@@ -131,6 +135,33 @@ Event.levelComplete.add("replayLevel", {order="nextLevel", sequence=-1}, functio
     RunState.reset({Player.getPlayerEntity(1)})
     for key, value in pairs(savedState.runState) do
       RunState.set(key, Utilities.deepCopy(value))
+    end
+
+    -- Equipped items can also effect level generation (e.g. war)
+    local player = Player.getPlayerEntity(1)
+    Inventory.clear(player)
+    for i, item in ipairs(savedState.items) do
+      local granted = Inventory.grant(item.name, player)
+      if item.quantity ~= nil then
+        granted.itemStack.quantity = item.quantity
+      end
+      if item.follower ~= nil then
+        granted.follower = item.follower
+      end
+      if item.remainingKills ~= nil then
+        granted.spellCooldownKills.remainingKills = item.remainingKills
+      end
+      if item.activated then
+        granted.itemActivable.active = true
+      end
+
+      if item.name == "Holster" and savedState.holsteredItem ~= nil then
+        -- Holstered items aren't actually in the inventory, they're stored on the item.
+        -- Swap in and out so we use the game's storage systems.
+        Inventory.swapWithHolster(player, granted)
+        Inventory.grant(savedState.holsteredItem, player)
+        Inventory.swapWithHolster(player, granted)
+      end
     end
   end
 end)
@@ -211,33 +242,6 @@ end
 
 function loadState()
   local player = Player.getPlayerEntity(1)
-  
-  Inventory.clear(player)
-  if #savedState.items > 0 then
-    for i, item in ipairs(savedState.items) do
-      local granted = Inventory.grant(item.name, player)
-      if item.quantity ~= nil then
-        granted.itemStack.quantity = item.quantity
-      end
-      if item.follower ~= nil then
-        granted.follower = item.follower
-      end
-      if item.remainingKills ~= nil then
-        granted.spellCooldownKills.remainingKills = item.remainingKills
-      end
-      if item.activated then
-        granted.itemActivable.active = true
-      end
-
-      if item.name == "Holster" and savedState.holsteredItem ~= nil then
-        -- Holstered items aren't actually in the inventory, they're stored on the item.
-        -- Swap in and out so we use the game's storage systems.
-        Inventory.swapWithHolster(player, granted)
-        Inventory.grant(savedState.holsteredItem, player)
-        Inventory.swapWithHolster(player, granted)
-      end
-    end
-  end
 
   player.health.health = savedState.health
   player.health.maxHealth = savedState.maxHealth

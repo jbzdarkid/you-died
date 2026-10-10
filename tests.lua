@@ -83,11 +83,54 @@ function spawnItemAt(x, y, item)
   return true
 end
 
--- TODO: Test for leprechaun
+-- TODO: Crossbow (398362066 in zone 2)
 
 local testSpeedMult = 10
 
 local tests = {{
+  name = "BossShrine",
+  seed = 1072570996,
+  steps = {
+    "URRRRURRRRRRQ...RD....", -- Take the trapdoor
+
+    -- Confirm ambush
+    function() return assertEqual(CurrentLevel.getNumber(), 2) end,
+    function() return assertWorldItemAt(-2, -2, "Bat") end,
+    function() return assertWorldItemAt( 2, -2, "Skeleton") end,
+    function() return assertWorldItemAt( 2,  2, "Ghost") end,
+    function() return assertWorldItemAt(-2,  2, "Dragon") end,
+
+    "LDRLRLRDUDDRRR", -- Clear ambush, head east
+    "RRUUURU", -- Tap boss shrine
+    
+    -- Confirm shrine items
+    function() return assertWorldItemAt(-1, 0, "TorchForesight") end,
+    function() return assertWorldItemAt(0,  1, "RingPiercing") end,
+    function() return assertWorldItemAt(1,  0, "Sync_WeaponGlassTrident") end,
+    "R.....", -- Die to orange slime
+
+    -- Confirm same ambush
+    function() return assertEqual(CurrentLevel.getNumber(), 2) end,
+    function() return assertWorldItemAt(-2, -2, "Bat") end,
+    function() return assertWorldItemAt( 2, -2, "Skeleton") end,
+    function() return assertWorldItemAt( 2,  2, "Ghost") end,
+    function() return assertWorldItemAt(-2,  2, "Dragon") end,
+  },
+}, {
+  name = "Leprechaun",
+  seed = 1266064386,
+  steps = {
+    "DDRRRRRRRRRDDDDQ", -- Bomb the crate
+    "ULLD..R...DDDDDD", -- Grab the charm
+    function() return assertInventoryItem("CharmLuck") end,
+
+    "....", -- Die to black skeleton
+
+    "DDRRRRRRRRRDDDDQ", -- Bomb the crate
+    "ULLD..R...DDDDDD", -- Confirm the leprechaun (and charm) still spawn
+    function() return assertInventoryItem("CharmLuck") end,
+  },
+}, {
   name = "BloodDash",
   seed = 1053678846,
   steps = {
@@ -246,7 +289,7 @@ local tests = {{
     -- Restarted the level, so we return to base (full) health
     function() return assertEqual(Health.getCurrentHealth(Player.getPlayerEntity(1)), 6) end,
   },
-}, {
+},{
   name = "HealSpell",
   seed = 1431898213,
   steps = {
@@ -374,6 +417,28 @@ local tests = {{
     function() return assertWorldItemAt( 2, -2, "Skeleton") end,
     function() return assertWorldItemAt( 2,  2, "Ghost") end,
     function() return assertWorldItemAt(-2,  2, "Dragon") end,
+  },
+},{
+  name = "RingOfWar",
+  seed = 888431143,
+  steps = {
+    "RRDDDRRRRRRRRDDRRDD", -- Enter shriner
+    function() return assertWorldItemAt(-1, -2, "ShrineOfWar") end,
+    function() return assertWorldItemAt( 0, -2, "ShrineOfUncertainty") end,
+    function() return assertWorldItemAt( 1, -2, "ShrineOfBlood") end,
+    "UQLLLRU", -- Grab ring of war
+    function() return assertInventoryItem("RingWar") end,
+
+    "............", -- Dragons are not super consistent but this should be enough to die
+    
+    -- Confirm we've respawned
+    function() return assertEqual(Health.getCurrentHealth(Player.getPlayerEntity(1)), 6) end,
+    
+    "RRDDDRRRRRRRRDDLDDD",
+    "DDDRRRRRRRR",
+    "RRDDDRRRDDDDD.",
+    -- Dragon should now be in front of us
+    function() return assertWorldItemAt(0, 1, "Dragon") end,
   },
 },{
   name = "ShrineOfSpace",
