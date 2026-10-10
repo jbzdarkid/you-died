@@ -23,9 +23,6 @@ local Utilities = require "system.utils.Utilities"
 
 -- TODO: Some better ideas about what lives where.
 -- TODO: Pause menu entry to retry level (in case you can't die?)
--- TODO: Test:
-  -- boss shrine
-  -- Crossbow ammo
 
 local youDied = false -- Tracks if we need to reapply the saved level on restart.
 
@@ -40,7 +37,9 @@ Event.levelLoad.add("preLevelLoad", {order="runState", sequence=-1}, function(ev
   -- Testing hack
   if evt.zone == 1 and evt.floor == 1 and not youDied then
     Inventory.grant("MiscMap", Player.getPlayerEntity(1))
+    -- Inventory.grant("HeadCircletTelepathy", Player.getPlayerEntity(1))
     -- Inventory.grant("HeadMonocle", Player.getPlayerEntity(1))
+    -- Inventory.grant("TorchForesight", Player.getPlayerEntity(1))
   end
 
   
@@ -59,9 +58,6 @@ Event.gameStateLevel.add("postLevelLoad", {order="levelLoadingDone", sequence=-1
     print("Applying saved entity RNG values on restart")
     for entity in Entities.entitiesWithComponents({"random"}) do
       local key = entity.name .. "@" .. entity.position.x .. "," .. entity.position.y
-      if savedState.randomEntities[key] == nil then
-        print("<62>", key)
-      end
       entity.random.state1 = savedState.randomEntities[key].state1
       entity.random.state2 = savedState.randomEntities[key].state2
       entity.random.state3 = savedState.randomEntities[key].state3
@@ -154,6 +150,9 @@ Event.levelComplete.add("replayLevel", {order="nextLevel", sequence=-1}, functio
       if item.activated then
         granted.itemActivable.active = true
       end
+      if item.ammo ~= nil then
+        granted.weaponReloadable.ammo = item.ammo
+      end
 
       if item.name == "Holster" and savedState.holsteredItem ~= nil then
         -- Holstered items aren't actually in the inventory, they're stored on the item.
@@ -185,6 +184,9 @@ function saveState()
     end
     if item.itemActivable ~= nil then
       itemData.activated = item.itemActivable.active
+    end
+    if item.weaponReloadable ~= nil then
+      itemData.ammo = item.weaponReloadable.ammo
     end
 
     if item.itemHolster ~= nil then -- Checks both 'is Holster' and 'item is holstered'

@@ -63,6 +63,27 @@ function assertInventoryItem(name)
   return false
 end
 
+function assertEnemies(filter, enemies)
+  local expected = {}
+  for _, name in ipairs(enemies) do
+    expected[name] = true
+  end
+  local success = true
+  for entity in Entities.entitiesWithComponents(filter) do
+    if expected[entity.name] == nil then
+      print("ASSERTION FAILED. Enemy " .. entity.name .. " was not expected to be present.")
+      return false
+    end
+    expected[entity.name] = nil
+  end
+  if #expected == 0 then
+    return true
+  end
+  print("ASSERTION FAILED. Unexpected enemies: ", expected)
+  return false
+end
+
+
 function assertEqual(actual, expected)
   if actual == expected then
     return true
@@ -83,38 +104,34 @@ function spawnItemAt(x, y, item)
   return true
 end
 
--- TODO: Crossbow (398362066 in zone 2)
+-- DR teleports? uhhhh
+-- anything else boss related?
 
 local testSpeedMult = 10
 
 local tests = {{
-  name = "BossShrine",
-  seed = 1072570996,
+  name = "Crossbow",
+  seed = 1484350008,
   steps = {
-    "URRRRURRRRRRQ...RD....", -- Take the trapdoor
-
-    -- Confirm ambush
+    "RRDDDDDDDDDDD", -- Grab bombs, head to exit
+    "RDRDRQRDRLDLDDDDDD", -- Kill miniboss, take stairs
     function() return assertEqual(CurrentLevel.getNumber(), 2) end,
-    function() return assertWorldItemAt(-2, -2, "Bat") end,
-    function() return assertWorldItemAt( 2, -2, "Skeleton") end,
-    function() return assertWorldItemAt( 2,  2, "Ghost") end,
-    function() return assertWorldItemAt(-2,  2, "Dragon") end,
+    "RRRRRUURRRR.RR", -- Enter right room
+    "URRRRRRQRRRLD", -- Bomb and enter blood shop
 
-    "LDRLRLRDUDDRRR", -- Clear ambush, head east
-    "RRUUURU", -- Tap boss shrine
-    
-    -- Confirm shrine items
-    function() return assertWorldItemAt(-1, 0, "TorchForesight") end,
-    function() return assertWorldItemAt(0,  1, "RingPiercing") end,
-    function() return assertWorldItemAt(1,  0, "Sync_WeaponGlassTrident") end,
-    "R.....", -- Die to orange slime
+    function() return assertWorldItemAt(-1, -2, "WeaponGoldenCrossbow") end,
+    function() return assertWorldItemAt( 0, -2, "Sync_WeaponTitaniumTrident") end,
+    function() return assertWorldItemAt( 1, -2, "FeetBootsWinged") end,
+    "LUUDDR", -- Grab golden crossbow"
+    "UUUUUUUUUGUUUU", -- Kill bat, exit with 1 ammo loaded
 
-    -- Confirm same ambush
-    function() return assertEqual(CurrentLevel.getNumber(), 2) end,
-    function() return assertWorldItemAt(-2, -2, "Bat") end,
-    function() return assertWorldItemAt( 2, -2, "Skeleton") end,
-    function() return assertWorldItemAt( 2,  2, "Ghost") end,
-    function() return assertWorldItemAt(-2,  2, "Dragon") end,
+    function() return assertEqual(CurrentLevel.getNumber(), 3) end,
+
+    "QG...", -- Die to bomb
+
+    "LDDDDDD", -- Fire last shot at the black skeleton"
+    "D", -- If no ammo, we step down -- the skeleton should be right below us.
+    function() return assertWorldItemAt(0, 1, "Skeleton3") end,
   },
 }, {
   name = "Leprechaun",
@@ -141,7 +158,7 @@ local tests = {{
     function() return assertEqual(CurrentLevel.getNumber(), 2) end,
     "U", -- Dash up
     function() return assertTileAt(0, -1, "ShopWallCracked") end,
-    
+
     "Q....", -- Die to bomb
 
     -- Confirm that we kept dash, so 'Up' gets us next to the shop wall again
@@ -159,7 +176,7 @@ local tests = {{
     "RRRRRRRRZRRRRRRRRRR", -- Grab cookies, head right, eat one
     "RRR.UUUURRRRRRRRRUUU", -- Enter final room
     "U.UUUUZUZUZUULLLLLU", -- Kill dragon, take stairs, eat a few more cookies (2 left)
-    
+
     function() return assertEqual(CurrentLevel.getNumber(), 2) end,
     "Z", -- Eat a cookie (2 -> 1)
     function() return assertInventoryItem("FoodCookies") end,
@@ -190,7 +207,7 @@ local tests = {{
     function() return assertInventoryItem("WeaponDagger") end,
 
     "DD.......", -- Die to the minotaur
-    
+
     -- Confirm that we still have our rapier primary (and dagger secondary)
     function() return assertInventoryItem("WeaponRapier") end,
     "Z", -- Swap holstered item
@@ -203,14 +220,14 @@ local tests = {{
     "LLDDDDQUURDD", -- Enter blood shop
     "UUDD", -- Grab blood spear (10 kills until heal)
     function() return assertInventoryItem("WeaponBloodSpear") end,
-    
+
     "UUUUUURRRRRUUU", -- Enter north room
     "UUURRUUU", -- Kill 4 enemies, blood is now at 6
     ".LULURRRR....", -- Kill 2 more enemies, take trapdoor (4)
 
     function() return assertEqual(CurrentLevel.getNumber(), 2) end,
     function() return assertEqual(Health.getCurrentHealth(Player.getPlayerEntity(1)), 2) end,
-    
+
     "LDDURURDRLL", -- Clear arena
     function() return assertEqual(Health.getCurrentHealth(Player.getPlayerEntity(1)), 3) end,
 
@@ -236,12 +253,12 @@ local tests = {{
     function() return assertWorldItemAt( 2, -2, "Bat") end,
     function() return assertWorldItemAt( 2,  2, "Skeleton") end,
     function() return assertWorldItemAt(-2,  2, "Ghost") end,
-    
+
     -- Check what came out of the crate
     function() return assertWorldItemAt(-1, 0, "BombGrenade3") end,
     "LUAD", -- Clear arena,
     "U.....", -- Die to ghost
-    
+
     -- Confirm we're back in the arena
     function() return assertWorldItemAt(-2, -2, "Minotaur") end,
     function() return assertWorldItemAt( 2, -2, "Bat") end,
@@ -347,16 +364,16 @@ local tests = {{
     function() return assertEqual(CurrentLevel.getNumber(), 2) end,
     function() return assertEqual(GrooveChain.getMultiplier(Player.getPlayerEntity(1)), 2) end,
     function() return assertEqual(Currency.get(Player.getPlayerEntity(1), Currency.Type.GOLD), 28) end,
-    
+
     "LLDDDDLL", -- Enter west room
     "LLLLLLL....", -- Die to blue slime
-    
+
     function() return assertEqual(CurrentLevel.getNumber(), 2) end,
     function() return assertEqual(Currency.get(Player.getPlayerEntity(1), Currency.Type.GOLD), 28) end,
     function() return assertEqual(GrooveChain.getMultiplier(Player.getPlayerEntity(1)), 2) end,
-    
+
     "LLDDDDLL", -- Enter west room
-    
+
     "LLLL", -- kill one enemy
     function() return assertEqual(GrooveChain.getMultiplier(Player.getPlayerEntity(1)), 2) end,
 
@@ -430,10 +447,10 @@ local tests = {{
     function() return assertInventoryItem("RingWar") end,
 
     "............", -- Dragons are not super consistent but this should be enough to die
-    
+
     -- Confirm we've respawned
     function() return assertEqual(Health.getCurrentHealth(Player.getPlayerEntity(1)), 6) end,
-    
+
     "RRDDDRRRRRRRRDDLDDD",
     "DDDRRRRRRRR",
     "RRDDDRRRDDDDD.",
@@ -460,6 +477,38 @@ local tests = {{
     function() return assertWorldItemAt(-1, -2, "ShrineOfGlass") end,
     function() return assertWorldItemAt( 0, -2, "ShrineOfBoss") end,
     function() return assertWorldItemAt( 1, -2, "ShrineOfSpace") end,
+  },
+},{
+  name = "BossShrine",
+  seed = 1072570996,
+  steps = {
+    "URRRRURRRRRRQ...RD....", -- Take the trapdoor
+
+    -- Confirm ambush
+    function() return assertEqual(CurrentLevel.getNumber(), 2) end,
+    function() return assertWorldItemAt(-2, -2, "Bat") end,
+    function() return assertWorldItemAt( 2, -2, "Skeleton") end,
+    function() return assertWorldItemAt( 2,  2, "Ghost") end,
+    function() return assertWorldItemAt(-2,  2, "Dragon") end,
+
+    "LDRLRLRDUDDRRR", -- Clear ambush, head east
+    "RRUUURU", -- Tap boss shrine
+
+    -- Confirm shrine items
+    function() return assertWorldItemAt(-1, 0, "TorchForesight") end,
+    function() return assertWorldItemAt(0,  1, "RingPiercing") end,
+    function() return assertWorldItemAt(1,  0, "Sync_WeaponGlassTrident") end,
+    "R.....", -- Die to orange slime
+
+    -- Confirm same ambush
+    function() return assertEqual(CurrentLevel.getNumber(), 2) end,
+    function() return assertWorldItemAt(-2, -2, "Bat") end,
+    function() return assertWorldItemAt( 2, -2, "Skeleton") end,
+    function() return assertWorldItemAt( 2,  2, "Ghost") end,
+    function() return assertWorldItemAt(-2,  2, "Dragon") end,
+
+    -- There should be 2 minibosses on this floor, not 3 -- one from our current ambush and one as the floor boss.
+    function() return assertEnemies({"ambusher"}, {"Dragon", "BatMiniboss2"}) end,
   },
 },{
   name = "TransmuteShop",
@@ -579,7 +628,7 @@ function getNextTestMove()
   if currentTest == nil then
     return nil
   end
-  
+
   if stepIndex > #currentTest.steps then
     print("PASSED: " .. currentTest.name)
     startNextTest()
@@ -595,14 +644,14 @@ function getNextTestMove()
     end
     stepIndex = stepIndex + 1
     return getNextTestMove() -- Could be another assert or another string of moves.
-  
+
   elseif type(step) == "string" then
     if subStepIndex > #step then
       subStepIndex = 1
       stepIndex = stepIndex + 1
       return getNextTestMove()
     end
-    
+
     local key = string.sub(step, subStepIndex, subStepIndex)
     subStepIndex = subStepIndex + 1
     if key == "U" then     return Action.Direction.UP
