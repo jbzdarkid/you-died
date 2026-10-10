@@ -32,6 +32,7 @@ local savedState = nil
 Event.gameStateReset.add("clearCheckpoint", {order="random"}, function()
   -- Clear state when we start a new run or go to the lobby.
   youDied = false
+  deathCount = 0
   savedState = nil
 end)
 
@@ -46,11 +47,23 @@ Event.levelLoad.add("preLevelLoad", {order="runState", sequence=-1}, function(ev
   end
 end)
 
-Event.getIntroText.add("replaceCustomModeIntro", {order="modsEnabled", sequence=1}, function(ev)
+Event.getIntroText.add("replaceCustomModeIntro", {order="modsEnabled", sequence=1}, function(evt)
   if youDied then
-    ev.text = "You died!\nDeath count: " .. tostring(deathCount)
-  elseif ev.text == TextPool.get("gameMode.allZones.intro.modded") then
-    ev.text = TextPool.get("gameMode.allZones.intro")
+    evt.text = "You died!\nDeath count: " .. tostring(deathCount)
+  elseif evt.text == TextPool.get("gameMode.allZones.intro.modded") then
+    evt.text = TextPool.get("gameMode.allZones.intro")
+  end
+end)
+
+Event.menu.add("addDeathCount", {key="runSummary", sequence=1}, function(evt)
+  for i, entry in ipairs(evt.menu.entries) do
+    if entry.id == "duration" then
+      local newEntry = Utilities.deepCopy(entry) -- Match style with deep copy
+      newEntry.id = "deathCount"
+      newEntry.label = "Death count: " .. tostring(deathCount)
+      table.insert(evt.menu.entries, i + 1, newEntry)
+      return
+    end
   end
 end)
 
