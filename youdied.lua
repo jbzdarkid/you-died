@@ -16,6 +16,7 @@ local ObjectEvents = require "necro.game.object.ObjectEvents"
 local Player = require "necro.game.character.Player"
 local RunState = require "necro.game.system.RunState"
 local ShrineGeneration = require "necro.game.level.ShrineGeneration"
+local TextPool = require "necro.config.i18n.TextPool"
 local Utilities = require "system.utils.Utilities"
 
 -- Docs are available via https://vortexbuffer.com/synchrony/docs/search/search_index.json
@@ -25,6 +26,7 @@ local Utilities = require "system.utils.Utilities"
 -- TODO: Pause menu entry to retry level (in case you can't die?)
 
 local youDied = false -- Tracks if we need to reapply the saved level on restart.
+local deathCount = 0
 
 local savedState = nil
 Event.gameStateReset.add("clearCheckpoint", {order="random"}, function()
@@ -34,15 +36,6 @@ Event.gameStateReset.add("clearCheckpoint", {order="random"}, function()
 end)
 
 Event.levelLoad.add("preLevelLoad", {order="runState", sequence=-1}, function(evt)
-  -- Testing hack
-  if evt.zone == 1 and evt.floor == 1 and not youDied then
-    Inventory.grant("MiscMap", Player.getPlayerEntity(1))
-    -- Inventory.grant("HeadCircletTelepathy", Player.getPlayerEntity(1))
-    -- Inventory.grant("HeadMonocle", Player.getPlayerEntity(1))
-    -- Inventory.grant("TorchForesight", Player.getPlayerEntity(1))
-  end
-
-  
   if youDied then
     print("Restarting level " .. evt.zone .. "-" .. evt.floor .. " after dying")
     loadState()
@@ -50,6 +43,14 @@ Event.levelLoad.add("preLevelLoad", {order="runState", sequence=-1}, function(ev
     print("Reached new level " .. evt.zone .. "-" .. evt.floor .. ", making new checkpoint")
     savedState = saveState()
     savedState.targetLevel = CurrentLevel.getNumber()
+  end
+end)
+
+Event.getIntroText.add("replaceCustomModeIntro", {order="modsEnabled", sequence=1}, function(ev)
+  if youDied then
+    ev.text = "You died!\nDeath count: " .. tostring(deathCount)
+  elseif ev.text == TextPool.get("gameMode.allZones.intro.modded") then
+    ev.text = TextPool.get("gameMode.allZones.intro")
   end
 end)
 
@@ -119,6 +120,7 @@ Event.objectTakeDamage.add("checkDeath", {order="death", sequence=-1, filter="he
     size = 10,
   })
 
+  deathCount = deathCount + 1
   youDied = true
 end)
 

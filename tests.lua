@@ -106,6 +106,8 @@ end
 
 -- DR teleports? uhhhh
 -- anything else boss related?
+  -- boss chests
+  -- boss openings
 
 local testSpeedMult = 10
 
@@ -493,6 +495,7 @@ local tests = {{
 
     "LDRLRLRDUDDRRR", -- Clear ambush, head east
     "RRUUURU", -- Tap boss shrine
+    function() return assertWorldItemAt( 0, -1, "ShrineOfBoss") end,
 
     -- Confirm shrine items
     function() return assertWorldItemAt(-1, 0, "TorchForesight") end,
@@ -509,6 +512,45 @@ local tests = {{
 
     -- There should be 2 minibosses on this floor, not 3 -- one from our current ambush and one as the floor boss.
     function() return assertEnemies({"ambusher"}, {"Dragon", "BatMiniboss2"}) end,
+
+    "LDRLRLRDUDDRRR", -- Clear ambush, head east
+    "RRUUURUR", -- Tap boss shrine, grab trident
+    function() return assertInventoryItem("Sync_WeaponGlassTrident") end,
+
+    "RLLDDDDDD", -- Take trident, head south
+    "DDDDDDDDRRRRRR....", -- Take trapdoor
+
+    function() return assertEqual(CurrentLevel.getNumber(), 3) end,
+    function() return assertWorldItemAt(-2, -2, "BatMiniboss2") end,
+    function() return assertWorldItemAt( 2, -2, "Bat2") end,
+    function() return assertWorldItemAt( 2,  2, "Skeleton2") end,
+    function() return assertWorldItemAt(-2,  2, "Ghost") end,
+
+    "ULRDRRDDDDD", -- Clear ambush, head to south room
+    "RRRRRDDDDDDDDDR.....", -- Take trapdoor again
+
+    function() return assertEqual(CurrentLevel.getNumber(), 4) end,
+    function() return assertWorldItemAt(-2, -2, "Bat2") end,
+    function() return assertWorldItemAt( 2, -2, "Dragon2") end,
+    function() return assertWorldItemAt( 2,  2, "Ghost") end,
+    function() return assertWorldItemAt(-2,  2, "Minotaur2") end,
+
+    "WWW....", -- Die to blood magic
+
+    function() return assertEqual(CurrentLevel.getNumber(), 4) end,
+    function() return assertWorldItemAt(-2, -2, "Bat2") end,
+    function() return assertWorldItemAt( 2, -2, "Dragon2") end,
+    function() return assertWorldItemAt( 2,  2, "Ghost") end,
+    function() return assertWorldItemAt(-2,  2, "Minotaur2") end,
+
+    "WDDUU", -- Clear arena
+    "UUUUUUUUUUUUUUUU......", -- Die to boss
+
+    function() return assertEqual(CurrentLevel.getNumber(), 4) end,
+    function() return assertWorldItemAt(-2, -2, "Bat2") end,
+    function() return assertWorldItemAt( 2, -2, "Dragon2") end,
+    function() return assertWorldItemAt( 2,  2, "Ghost") end,
+    function() return assertWorldItemAt(-2,  2, "Minotaur2") end,
   },
 },{
   name = "TransmuteShop",
